@@ -71,6 +71,11 @@ func BenchmarkProver(b *testing.B) {
 	for _, curve := range getCurves() {
 		b.Run(curve.String(), func(b *testing.B) {
 			r1cs, _solution := referenceCircuit(curve)
+			println()
+			println("Constraints: ", r1cs.GetNbConstraints())
+			println("Internal vars: ", r1cs.GetNbInternalVariables())
+			println("Secret vars: ", r1cs.GetNbSecretVariables())
+			println("Public vars: ", r1cs.GetNbPublicVariables())
 			fullWitness, err := frontend.NewWitness(_solution, curve.ScalarField())
 			if err != nil {
 				b.Fatal(err)
@@ -119,10 +124,12 @@ func BenchmarkVerifier(b *testing.B) {
 
 type refCircuit struct {
 	nbConstraints int
+	nbVariables   int
 	X             frontend.Variable
 	Y             frontend.Variable `gnark:",public"`
 }
 
+// The default gnark benchmarking circuit
 func (circuit *refCircuit) Define(api frontend.API) error {
 	for i := 0; i < circuit.nbConstraints; i++ {
 		circuit.X = api.Mul(circuit.X, circuit.X)
@@ -131,10 +138,35 @@ func (circuit *refCircuit) Define(api frontend.API) error {
 	return nil
 }
 
+// A modified ChatGPT benchmarking circuit that's supposed to have a targetted # of constraints & variables (wires)
+// but is a little off actually.
+//
+//func (circuit *refCircuit) Define(api frontend.API) error {
+//	// Start with the initial operation
+//	b0 := api.Mul(circuit.X, circuit.X)
+//
+//	// Generate variables and constraints up to NUM_VARIABLES
+//	var lastB = b0
+//	for i := 1; i < circuit.nbVariables; i++ {
+//		nextB := api.Mul(lastB, lastB) // Each operation creates a new wire
+//		lastB = nextB
+//	}
+//
+//	// Add more constraints without necessarily adding more wires
+//	// Depending on your requirements, you can re-use variables to control the number of wires
+//	for j := circuit.nbVariables; j < circuit.nbConstraints; j++ {
+//		api.AssertIsEqual(lastB, api.Mul(lastB, lastB))
+//	}
+//
+//	circuit.Y = lastB // Assign the last variable as output
+//	return nil
+//}
+
 func referenceCircuit(curve ecc.ID) (constraint.ConstraintSystem, frontend.Circuit) {
-	const nbConstraints = 40000
+	const nbConstraints = 1299928
 	circuit := refCircuit{
 		nbConstraints: nbConstraints,
+		nbVariables:   1270049,
 	}
 	r1cs, err := frontend.Compile(curve.ScalarField(), r1cs.NewBuilder, &circuit)
 	if err != nil {
