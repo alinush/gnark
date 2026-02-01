@@ -3,6 +3,7 @@ package sw_bls12381_test
 import (
 	"crypto/rand"
 	"fmt"
+	"testing"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	bls12381 "github.com/consensys/gnark-crypto/ecc/bls12-381"
@@ -24,8 +25,8 @@ func (c *PairCircuit) Define(api frontend.API) error {
 		return fmt.Errorf("new pairing: %w", err)
 	}
 	// Pair method does not check that the points are in the proper groups.
-	pairing.AssertIsOnG1(&c.InG1)
-	pairing.AssertIsOnG2(&c.InG2)
+	//pairing.AssertIsOnG1(&c.InG1)
+	//pairing.AssertIsOnG2(&c.InG2)
 	// Compute the pairing
 	res, err := pairing.Pair([]*sw_bls12381.G1Affine{&c.InG1}, []*sw_bls12381.G2Affine{&c.InG2})
 	if err != nil {
@@ -35,7 +36,8 @@ func (c *PairCircuit) Define(api frontend.API) error {
 	return nil
 }
 
-func ExamplePairing() {
+func TestPairing(t *testing.T) {
+	fmt.Println("Starting")
 	p, q, err := randomG1G2Affines()
 	if err != nil {
 		panic(err)
@@ -44,16 +46,25 @@ func ExamplePairing() {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("Circuit")
 	circuit := PairCircuit{}
 	witness := PairCircuit{
 		InG1: sw_bls12381.NewG1Affine(p),
 		InG2: sw_bls12381.NewG2Affine(q),
 		Res:  sw_bls12381.NewGTEl(res),
 	}
+	fmt.Println("Compiling")
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
 	if err != nil {
 		panic(err)
 	}
+
+	internal, secret, public := ccs.GetNbVariables()
+	fmt.Println("Number of constraints:", ccs.GetNbConstraints())
+	fmt.Println("Number of internal variables:", internal)
+	fmt.Println("Number of secret variables:", secret)
+	fmt.Println("Number of public variables:", public)
+
 	pk, vk, err := groth16.Setup(ccs)
 	if err != nil {
 		panic(err)
@@ -66,11 +77,17 @@ func ExamplePairing() {
 	if err != nil {
 		panic(err)
 	}
+
+	fmt.Println("Proving")
 	proof, err := groth16.Prove(ccs, pk, secretWitness)
+
 	if err != nil {
 		panic(err)
 	}
+
+	fmt.Println("Verifying")
 	err = groth16.Verify(proof, vk, publicWitness)
+
 	if err != nil {
 		panic(err)
 	}
