@@ -163,8 +163,9 @@ func (circuit *refCircuit) Define(api frontend.API) error {
 }
 
 func referenceCircuit(curve ecc.ID) (constraint.ConstraintSystem, frontend.Circuit) {
-	const nbConstraints = 1299928
-	const nbVariables = 1270049
+	// Target dimensions for the Keyless NP relation
+	const nbConstraints = 1438805
+	const nbVariables = 1406684 // results in 1,406,686 total vars (includes Y public + X secret)
 	circuit := refCircuit{
 		nbConstraints: nbConstraints,
 		nbVariables:   nbVariables,
