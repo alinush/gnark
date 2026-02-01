@@ -129,44 +129,45 @@ type refCircuit struct {
 	Y             frontend.Variable `gnark:",public"`
 }
 
-// The default gnark benchmarking circuit
+// Benchmarking circuit with controllable # of constraints and internal variables.
+//
+// In R1CS:
+//   - api.Mul(a, b) creates 1 constraint + 1 internal variable
+//   - api.AssertIsEqual(a, b) creates 1 constraint + 0 variables
+//
+// So we use Mul to create nbVariables, then AssertIsEqual to add extra constraints.
+//
+// Requires: nbConstraints > nbVariables (need at least nbVariables constraints for
+// the Mul operations, plus at least 1 for the final output assertion).
 func (circuit *refCircuit) Define(api frontend.API) error {
-	for i := 0; i < circuit.nbConstraints; i++ {
-		circuit.X = api.Mul(circuit.X, circuit.X)
+	if circuit.nbConstraints <= circuit.nbVariables {
+		panic("nbConstraints must be > nbVariables")
 	}
-	api.AssertIsEqual(circuit.X, circuit.Y)
+
+	// Phase 1: Create nbVariables internal variables via multiplications
+	// Each Mul adds 1 constraint + 1 internal variable
+	current := circuit.X
+	for i := 0; i < circuit.nbVariables; i++ {
+		current = api.Mul(current, current)
+	}
+
+	// Phase 2: Add extra constraints without creating new variables
+	// Each AssertIsEqual adds 1 constraint + 0 variables
+	extraConstraints := circuit.nbConstraints - circuit.nbVariables - 1 // -1 for final Y assertion
+	for i := 0; i < extraConstraints; i++ {
+		api.AssertIsEqual(current, circuit.Y)
+	}
+
+	api.AssertIsEqual(current, circuit.Y)
 	return nil
 }
 
-// A modified ChatGPT benchmarking circuit that's supposed to have a targetted # of constraints & variables (wires)
-// but is a little off actually.
-//
-//func (circuit *refCircuit) Define(api frontend.API) error {
-//	// Start with the initial operation
-//	b0 := api.Mul(circuit.X, circuit.X)
-//
-//	// Generate variables and constraints up to NUM_VARIABLES
-//	var lastB = b0
-//	for i := 1; i < circuit.nbVariables; i++ {
-//		nextB := api.Mul(lastB, lastB) // Each operation creates a new wire
-//		lastB = nextB
-//	}
-//
-//	// Add more constraints without necessarily adding more wires
-//	// Depending on your requirements, you can re-use variables to control the number of wires
-//	for j := circuit.nbVariables; j < circuit.nbConstraints; j++ {
-//		api.AssertIsEqual(lastB, api.Mul(lastB, lastB))
-//	}
-//
-//	circuit.Y = lastB // Assign the last variable as output
-//	return nil
-//}
-
 func referenceCircuit(curve ecc.ID) (constraint.ConstraintSystem, frontend.Circuit) {
 	const nbConstraints = 1299928
+	const nbVariables = 1270049
 	circuit := refCircuit{
 		nbConstraints: nbConstraints,
-		nbVariables:   1270049,
+		nbVariables:   nbVariables,
 	}
 	r1cs, err := frontend.Compile(curve.ScalarField(), r1cs.NewBuilder, &circuit)
 	if err != nil {
@@ -176,10 +177,10 @@ func referenceCircuit(curve ecc.ID) (constraint.ConstraintSystem, frontend.Circu
 	var good refCircuit
 	good.X = 2
 
-	// compute expected Y
+	// compute expected Y: X is squared nbVariables times, so Y = X^(2^nbVariables)
 	expectedY := new(big.Int).SetUint64(2)
 	exp := big.NewInt(1)
-	exp.Lsh(exp, nbConstraints)
+	exp.Lsh(exp, nbVariables)
 	expectedY.Exp(expectedY, exp, curve.ScalarField())
 
 	good.Y = expectedY
